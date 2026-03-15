@@ -12,8 +12,10 @@ import java.util.UUID;
 public interface AuditLogRepository extends JpaRepository<AuditLog, UUID> {
     Optional<AuditLog> findBySeedId(String seedId);
     boolean existsBySeedId(String seedId);
-    // Manager views logs based on their branch
+
+    // Manager views logs based on their branch (branch-scoped)
     List<AuditLog> findByBranchIdOrderByTimestampDesc(UUID branchId);
-    // Admin views all logs
+
+    // Admin views all logs from newest to oldest
     List<AuditLog> findAllByOrderByTimestampDesc();
 }

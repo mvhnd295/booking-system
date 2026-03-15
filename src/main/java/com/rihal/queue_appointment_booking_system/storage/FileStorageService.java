@@ -21,10 +21,10 @@ public class FileStorageService {
     @Value("${file.storage.location}")
     private String storageLocation;
 
-    @Value("${file.storage.max-id-image-size-bytes}")
+    @Value("${file.max-id-image-size-bytes}")
     private long maxIdImageSizeBytes;
 
-    @Value("${file.storage.max-attachment-size-bytes}")
+    @Value("${file.max-attachment-size-bytes}")
     private long maxAttachmentSizeBytes;
 
     private static final List<String> ALLOWED_ID_IMAGE_TYPES = List.of(

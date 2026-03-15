@@ -1,6 +1,8 @@
 package com.rihal.queue_appointment_booking_system.exception;
 
 import com.rihal.queue_appointment_booking_system.dto.response.ApiResponse;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -20,10 +23,18 @@ public class GlobalExceptionHandler {
     // 400 — validation errors from @Valid
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
-        String message = ex.getBindingResult().getFieldErrors().stream()
-                .map(FieldError::getDefaultMessage)
-                .collect(Collectors.joining("; "));
-        return ResponseEntity.badRequest().body(ApiResponse.error(message));
+        List<String> errors = ex.getBindingResult().getFieldErrors().stream()
+                .map(e -> e.getField() + ": " + e.getDefaultMessage())
+                .toList();
+        return ResponseEntity.badRequest().body(ApiResponse.errors(errors));
+    }
+    // 400 - Bad request thrown for validation errors from @Validated
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException ex) {
+        List<String> errors = ex.getConstraintViolations().stream()
+                .map(v -> v.getPropertyPath().toString() + ": " + v.getMessage())
+                .toList();
+        return ResponseEntity.badRequest().body(ApiResponse.errors(errors));
     }
 
     // 403 — ownership check failed
@@ -63,4 +74,5 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error("An unexpected error occurred."));
     }
+
 }

@@ -8,17 +8,20 @@ import com.rihal.queue_appointment_booking_system.service.AuthService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@Validated
 public class AuthController {
 
     private final AuthService authService;
@@ -51,8 +54,12 @@ public class AuthController {
             @RequestParam @NotBlank(message = "Full name is required")
             String fullname,
 
-            // Optional at this stage — will be required once file upload is wired
-            @RequestParam String phone,
+            // Optional phone
+            @RequestParam(required = false)
+            @Pattern(
+                    regexp = "^(\\+968)?[279]\\d{7}$",
+                    message = "Invalid phone number format.")
+            String phone,
 
             // ID Image
             @RequestPart("idImage") MultipartFile idImage
