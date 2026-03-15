@@ -23,5 +23,12 @@ public record AppointmentResponse(
         UUID serviceTypeId,
         String serviceTypeName,
         UUID staffId,
-        String staffName
+        String staffName,
+
+        // Attachment (will be null if no attachment was uploaded since optional for appointments)
+        UUID attachmentId,
+        String attachmentUrl,
+        String originalName,
+        String mimeType,
+        Long sizeBytes
 ) {}

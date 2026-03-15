@@ -43,7 +43,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
 
-                        // ── Swagger UI (remove in production if needed) ───────
+                        // ── Swagger UI ───────
                         .requestMatchers(
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",

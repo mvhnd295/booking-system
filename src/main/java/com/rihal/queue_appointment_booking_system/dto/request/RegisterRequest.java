@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import org.springframework.web.multipart.MultipartFile;
 
 public record RegisterRequest(
 
@@ -23,5 +24,8 @@ public record RegisterRequest(
         String fullName,
 
         // Optional at this stage — will be required once file upload is wired
-        String phone
+        String phone,
+
+        // ID Image
+        MultipartFile idImage
 ) {}

@@ -1,9 +1,6 @@
 package com.rihal.queue_appointment_booking_system.service;
 
-import com.rihal.queue_appointment_booking_system.domain.entity.Appointment;
-import com.rihal.queue_appointment_booking_system.domain.entity.Customer;
-import com.rihal.queue_appointment_booking_system.domain.entity.Slot;
-import com.rihal.queue_appointment_booking_system.domain.entity.User;
+import com.rihal.queue_appointment_booking_system.domain.entity.*;
 import com.rihal.queue_appointment_booking_system.domain.enums.AppointmentStatus;
 import com.rihal.queue_appointment_booking_system.domain.enums.AuditAction;
 import com.rihal.queue_appointment_booking_system.domain.enums.EntityType;
@@ -12,11 +9,14 @@ import com.rihal.queue_appointment_booking_system.dto.request.RescheduleAppointm
 import com.rihal.queue_appointment_booking_system.dto.response.AppointmentMapper;
 import com.rihal.queue_appointment_booking_system.dto.response.AppointmentResponse;
 import com.rihal.queue_appointment_booking_system.repository.AppointmentRepository;
+import com.rihal.queue_appointment_booking_system.repository.AttachmentRepository;
 import com.rihal.queue_appointment_booking_system.repository.CustomerRepository;
 import com.rihal.queue_appointment_booking_system.repository.SlotRepository;
+import com.rihal.queue_appointment_booking_system.storage.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -40,16 +40,30 @@ public class CustomerAppointmentService {
     private final AppointmentRepository appointmentRepository;
     private final SlotRepository slotRepository;
     private final CustomerRepository customerRepository;
+    private final AttachmentRepository attachmentRepository;
+    private final FileStorageService fileStorageService;
     private final AuditService auditService;
 
     // ── Book ──────────────────────────────────────────────────────────────────
 
     @Transactional
-    public AppointmentResponse book(User actor, BookAppointmentRequest request) {
+    public AppointmentResponse book(User actor, UUID slotId, MultipartFile attachmentFile) {
         Customer customer = resolveCustomer(actor);
-        Slot slot = resolveSlot(request.slotId());
+        Slot slot = resolveSlot(slotId);
 
         validateBooking(customer, slot);
+
+        // Attachment is optional so can be null
+        Attachment attachment = null;
+        if (attachmentFile != null && !attachmentFile.isEmpty()) {
+            String filePath = fileStorageService.storeAttachment(attachmentFile);
+            attachment = new Attachment();
+            attachment.setFilePath(filePath);
+            attachment.setOriginalName(attachmentFile.getOriginalFilename());
+            attachment.setMimeType(attachmentFile.getContentType());
+            attachment.setSizeBytes(attachmentFile.getSize());
+            attachmentRepository.save(attachment);
+        }
 
         // Create appointment
         Appointment appointment = new Appointment();
@@ -59,6 +73,7 @@ public class CustomerAppointmentService {
         appointment.setServiceType(slot.getServiceType());
         appointment.setStaff(slot.getStaff());
         appointment.setStatus(AppointmentStatus.BOOKED);
+        appointment.setAttachment(attachment);
         appointmentRepository.saveAndFlush(appointment);
 
         // Increment slot booked count

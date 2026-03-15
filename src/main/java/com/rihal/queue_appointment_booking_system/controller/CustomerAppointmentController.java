@@ -7,12 +7,15 @@ import com.rihal.queue_appointment_booking_system.dto.response.ApiResponse;
 import com.rihal.queue_appointment_booking_system.dto.response.AppointmentResponse;
 import com.rihal.queue_appointment_booking_system.service.CustomerAppointmentService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -25,12 +28,13 @@ public class CustomerAppointmentController {
     private final CustomerAppointmentService appointmentService;
 
     // POST /api/customer/appointments
-    @PostMapping
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<AppointmentResponse>> book(
             @AuthenticationPrincipal User actor,
-            @Valid @RequestBody BookAppointmentRequest request
+            @RequestParam @NotNull(message = "Slot ID is required.") UUID slotId,
+            @RequestPart(value = "attachment", required = false) MultipartFile attachment
             ) {
-        AppointmentResponse response = appointmentService.book(actor, request);
+        AppointmentResponse response = appointmentService.book(actor, slotId, attachment);
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Appointment Booked successfully.", response));

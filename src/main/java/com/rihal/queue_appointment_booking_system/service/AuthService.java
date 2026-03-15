@@ -11,12 +11,14 @@ import com.rihal.queue_appointment_booking_system.repository.CustomerRepository;
 import com.rihal.queue_appointment_booking_system.repository.RoleRepository;
 import com.rihal.queue_appointment_booking_system.repository.UserRepository;
 import com.rihal.queue_appointment_booking_system.security.JwtService;
+import com.rihal.queue_appointment_booking_system.storage.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
@@ -28,19 +30,30 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final FileStorageService fileStorageService;
 
     // ── Register ─────────────────────────────────────────────────────────────
 
     @Transactional
-    public AuthResponse register(RegisterRequest request) {
+    public AuthResponse register(
+            String username,
+            String email,
+            String password,
+            String fullname,
+            String phone,
+            MultipartFile idImage
+    ) {
 
         // Check for duplicates
-        if (userRepository.existsByUsername(request.username())) {
+        if (userRepository.existsByUsername(username)) {
             throw new IllegalArgumentException("Username already taken");
         }
-        if (userRepository.existsByEmail(request.email())) {
+        if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email already registered");
         }
+
+        // Store ID Image
+        String idImagePath = fileStorageService.storeIdImage(idImage);
 
         // Fetch CUSTOMER role
         Role customerRole = roleRepository.findByName(RoleName.CUSTOMER)
@@ -49,17 +62,19 @@ public class AuthService {
 
         // Build customer entity
         Customer customer = new Customer();
-        customer.setUsername(request.username());
-        customer.setEmail(request.email());
-        customer.setPasswordHash(passwordEncoder.encode(request.password()));
-        customer.setFullName(request.fullName());
-        customer.setPhone(request.phone());
+        customer.setUsername(username);
+        customer.setEmail(email);
+        customer.setPasswordHash(passwordEncoder.encode(password));
+        customer.setFullName(fullname);
+        customer.setPhone(phone);
         customer.setRole(customerRole);
         customer.setActive(true);
+        // idImagePath
+        customer.setIdImagePath(idImagePath);
+        customer.setIdImageSize(idImage.getSize());
+        customer.setIdImageType(idImage.getContentType());
 
-        // idImagePath is null for now — will be required once file upload is wired
-        customer.setIdImagePath(null);
-
+        // SAVE THE CUSTOMER
         customerRepository.save(customer);
 
         // Generate JWT

@@ -26,18 +26,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(ApiResponse.error(message));
     }
 
-    // 400 — illegal argument (slot full, already booked, etc.)
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
-        return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
-    }
-
-    // 409 — illegal state (wrong status for cancel/reschedule)
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
-    }
-
     // 403 — ownership check failed
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<ApiResponse<Void>> handleSecurity(SecurityException ex) {
@@ -50,6 +38,22 @@ public class GlobalExceptionHandler {
         log.error(ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.error("Access denied."));
+    }
+
+    // 404 — illegal argument (slot full, already booked, file not found, etc.)
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+        String message = ex.getMessage();
+        if (message != null && message.startsWith("File not found")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(message));
+        }
+        return ResponseEntity.badRequest().body(ApiResponse.error(message));
+    }
+
+    // 409 — illegal state (wrong status for cancel/reschedule)
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(ex.getMessage()));
     }
 
     // 500 — catch-all

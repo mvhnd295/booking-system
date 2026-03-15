@@ -27,11 +27,11 @@ public interface SlotRepository extends JpaRepository<Slot, UUID> {
                                   @Param("serviceTypeId") UUID serviceTypeId,
                                   @Param("from")LocalDateTime from);
 
-    // soft deleted slots past retention cutoff for cleanup-job
+    // Cleanup-job, soft deleted slots past retention period
     @Query("SELECT s FROM Slot s WHERE s.deleted = true AND s.deletedAt < :cutoff")
     List<Slot> findExpiredSoftDeletedSlots(@Param("cutoff") LocalDateTime cutoff);
 
-    // Using pessimistic locking on the slot row
+    // Using pessimistic locking on the slot row to prevent race conditions
     // During validation, the DB will lock the row until the transaction commits
     // This prevents double-booking on the DB level instead of JVM memory (works for distributed systems)
     @Lock(LockModeType.PESSIMISTIC_WRITE)

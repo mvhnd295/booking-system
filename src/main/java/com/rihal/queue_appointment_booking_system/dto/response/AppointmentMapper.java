@@ -26,7 +26,16 @@ public class AppointmentMapper {
                 // Appointment with no staff assigned to it
                 // (e.g.: "Any available staff" appointment)
                 a.getStaff() != null ? a.getStaff().getId() : null,
-                a.getStaff() != null ? a.getStaff().getFullName() : null
+                a.getStaff() != null ? a.getStaff().getFullName() : null,
+
+                // Attachment - nullable
+                a.getAttachment() != null ? a.getAttachment().getId() : null,
+                a.getAttachment() != null
+                        ? "/api/files/attachments/" + a.getAttachment().getId()
+                        : null,
+                a.getAttachment() != null ? a.getAttachment().getOriginalName() : null,
+                a.getAttachment() != null ? a.getAttachment().getMimeType() : null,
+                a.getAttachment() != null ? a.getAttachment().getSizeBytes() : null
         );
     }
 }
