@@ -5,6 +5,7 @@ import com.rihal.queue_appointment_booking_system.dto.request.SlotRequest;
 import com.rihal.queue_appointment_booking_system.dto.request.UpdateSlotRequest;
 import com.rihal.queue_appointment_booking_system.dto.response.ApiResponse;
 import com.rihal.queue_appointment_booking_system.dto.response.SlotManagementResponse;
+import com.rihal.queue_appointment_booking_system.service.AppConfigService;
 import com.rihal.queue_appointment_booking_system.service.SlotManagementService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ import java.util.UUID;
 public class SlotManagementController {
 
     private final SlotManagementService slotService;
+    private final AppConfigService appConfigService;
 
     /**
      * GET /api/slots?branchId=...
@@ -82,5 +84,18 @@ public class SlotManagementController {
     ) {
         slotService.softDeleteSlot(actor, id);
         return ResponseEntity.ok(ApiResponse.success("Slot deleted.", null));
+    }
+
+    /**
+     * POST /api/slots/cleanup - Hard delete cleanup job
+     */
+    @PostMapping("/cleanup")
+    public ResponseEntity<ApiResponse<Integer>> runCleanup(
+            @AuthenticationPrincipal User actor
+    ) {
+        int deleted = appConfigService.runCleanUp(actor);
+        return ResponseEntity.ok(ApiResponse.success(
+                deleted + " expired slots have been hard deleted.",
+                deleted));
     }
 }

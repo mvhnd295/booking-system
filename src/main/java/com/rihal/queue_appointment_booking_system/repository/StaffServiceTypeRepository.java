@@ -7,4 +7,6 @@ import java.util.UUID;
 
 public interface StaffServiceTypeRepository extends JpaRepository<StaffServiceType, StaffServiceType.StaffServiceTypeId> {
     boolean existsByStaffIdAndServiceTypeId(UUID staffId, UUID serviceTypeId);
+
+    void deleteByStaffIdAndServiceTypeId(UUID staffId, UUID serviceTypeId);
 }

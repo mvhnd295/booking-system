@@ -1,4 +1,4 @@
-package com.rihal.queue_appointment_booking_system.domain.entity;
+package com.rihal.queue_appointment_booking_system.config;
 
 public final class AppConfigKeys {
 

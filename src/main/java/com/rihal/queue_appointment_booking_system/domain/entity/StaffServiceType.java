@@ -27,7 +27,7 @@ public class StaffServiceType {
     @JoinColumn(name = "service_type_id", nullable = false)
     private ServiceType serviceType;
 
-    // ── Compositing the id which consists of the staff's and the serviceType's id ────────────────────────────────────────────────────────
+    // ── Compositing the id which consists of the staff's and the serviceType's id ────────────────────────────────────
     public static class StaffServiceTypeId implements Serializable {
 
         private UUID staff;

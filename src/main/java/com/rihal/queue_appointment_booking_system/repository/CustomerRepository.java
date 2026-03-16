@@ -4,6 +4,7 @@ import com.rihal.queue_appointment_booking_system.domain.entity.Customer;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -13,5 +14,5 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
     Optional<Customer> findByUsername(String username);
     Optional<Customer> findBySeedId(String seedId);
     boolean existsBySeedId(String seederId);
-
+    List<Customer> findAllByOrderByCreatedAtDesc();
 }
