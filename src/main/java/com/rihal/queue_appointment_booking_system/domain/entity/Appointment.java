@@ -9,6 +9,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -64,4 +66,18 @@ public class Appointment {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    /*
+     * Notes field added in migration V16.
+     *
+     * Stored as JSONB in the database and represented as a list of strings.
+     * New notes are appended instead of replacing existing ones so the history
+     * of notes is preserved.
+     *
+     * TODO:
+     * - Clarify whether notes should be visible to customers or staff only.
+     * - Confirm whether full audit history is required (with timestamps).
+     */
+    @Column(name = "internal_notes", nullable = true, columnDefinition = "jsonb")
+    private List<String> internalNotes = new ArrayList<>();
 }
