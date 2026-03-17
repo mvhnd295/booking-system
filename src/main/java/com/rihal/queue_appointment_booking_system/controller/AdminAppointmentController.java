@@ -5,6 +5,7 @@ import com.rihal.queue_appointment_booking_system.domain.enums.AppointmentStatus
 import com.rihal.queue_appointment_booking_system.dto.request.UpdateAppointmentStatusRequest;
 import com.rihal.queue_appointment_booking_system.dto.response.ApiResponse;
 import com.rihal.queue_appointment_booking_system.dto.response.AppointmentResponse;
+import com.rihal.queue_appointment_booking_system.dto.response.StaffAppointmentResponse;
 import com.rihal.queue_appointment_booking_system.service.AppointmentManagementService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -27,44 +28,44 @@ public class AdminAppointmentController {
     // GET /api/admin/appointments
     // - branchId is optional to be passed as query param if null it returns all appointments
     @GetMapping
-    public ResponseEntity<ApiResponse<List<AppointmentResponse>>> list(
+    public ResponseEntity<ApiResponse<List<StaffAppointmentResponse>>> list(
             @AuthenticationPrincipal User actor,
             @RequestParam(required = false) UUID branchId
     ) {
-        List<AppointmentResponse> appointments =
+        List<StaffAppointmentResponse> appointments =
                 appService.listAppointments(actor, branchId);
         return ResponseEntity.ok(ApiResponse.success("Appointments retrieved.", appointments));
     }
 
     // GET /api/admin/appointments/{id} - get any appointment in any branch
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<AppointmentResponse>> getOne(
+    public ResponseEntity<ApiResponse<StaffAppointmentResponse>> getOne(
             @AuthenticationPrincipal User actor,
             @PathVariable UUID id
     ) {
-        AppointmentResponse appointment = appService.getAppointment(actor, id);
+        StaffAppointmentResponse appointment = appService.getAppointment(actor, id);
         return ResponseEntity.ok(ApiResponse.success("Appointment retrieved.", appointment));
     }
 
     // PATCH /api/admin/appointments/{id}/status
     @GetMapping("/{id}/status")
-    public ResponseEntity<ApiResponse<AppointmentResponse>> updateStatus(
+    public ResponseEntity<ApiResponse<StaffAppointmentResponse>> updateStatus(
             @AuthenticationPrincipal User actor,
             @PathVariable UUID id,
             @Valid @RequestBody UpdateAppointmentStatusRequest request
     ) {
         AppointmentStatus newStatus = request.status();
-        AppointmentResponse appointment = appService.updateStatus(actor, id, newStatus);
+        StaffAppointmentResponse appointment = appService.updateStatus(actor, id, newStatus);
         return ResponseEntity.ok(ApiResponse.success("Appointment status updated.", appointment));
     }
 
     // PATCH /api/admin/appointments/{id}/cancel
     @GetMapping("/{id}/cancel")
-    public ResponseEntity<ApiResponse<AppointmentResponse>> cancel(
+    public ResponseEntity<ApiResponse<StaffAppointmentResponse>> cancel(
             @AuthenticationPrincipal User actor,
             @PathVariable UUID id
     ) {
-        AppointmentResponse response = appService.cancel(actor, id);
+        StaffAppointmentResponse response = appService.cancel(actor, id);
         return ResponseEntity.ok(ApiResponse.success("Appointment cancelled.", response));
     }
 }

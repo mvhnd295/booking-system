@@ -19,14 +19,19 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
 
     // Customer - own appointments (list mine)
     List<Appointment> findByCustomerIdOrderByCreatedAtDesc(UUID customerId);
-    List<Appointment> findByBranchId(UUID branchId);
-    List<Appointment> findByStaffId(UUID staffId);
 
     // Admin - list all appointments
     List<Appointment> findAllByOrderByCreatedAtDesc();
 
     // Branch Manager - list branch-scoped appointments
     List<Appointment> findByBranchIdOrderByCreatedAtDesc(UUID branchId);
+
+    // Staff - list assigned appointments
+    List<Appointment> findByStaffIdOrderByCreatedAtDesc(UUID staffId);
+
+//    List<Appointment> findByBranchId(UUID branchId);
+//    List<Appointment> findByStaffId(UUID staffId);
+
 
     // Prevent double booking the same appointment by checking if customer already booked this exact slot
     boolean existsByCustomerIdAndSlotIdAndStatusNotIn(

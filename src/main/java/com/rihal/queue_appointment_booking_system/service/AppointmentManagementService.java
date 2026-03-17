@@ -7,7 +7,7 @@ import com.rihal.queue_appointment_booking_system.domain.enums.AppointmentStatus
 import com.rihal.queue_appointment_booking_system.domain.enums.AuditAction;
 import com.rihal.queue_appointment_booking_system.domain.enums.EntityType;
 import com.rihal.queue_appointment_booking_system.dto.response.AppointmentMapper;
-import com.rihal.queue_appointment_booking_system.dto.response.AppointmentResponse;
+import com.rihal.queue_appointment_booking_system.dto.response.StaffAppointmentResponse;
 import com.rihal.queue_appointment_booking_system.repository.AppointmentRepository;
 import com.rihal.queue_appointment_booking_system.repository.SlotRepository;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +31,7 @@ public class AppointmentManagementService {
     private final AuditService auditService;
 
     // List of statuses that staff/branch-managers/admin can update (staff and managers are branch-scoped
-    Set<AppointmentStatus> UPDATEABLE_STATUSES =
+    Set<AppointmentStatus> UPDATABLE_STATUSES =
             Set.of(
                     AppointmentStatus.CHECKED_IN,
                     AppointmentStatus.NO_SHOW,
@@ -44,7 +44,7 @@ public class AppointmentManagementService {
      *  branchId != null -> Manager -> return all appointments of that branch
      */
     @Transactional(readOnly = true)
-    public List<AppointmentResponse> listAppointments(User actor, UUID branchId) {
+    public List<StaffAppointmentResponse> listAppointments(User actor, UUID branchId) {
 
         UUID allowedBranch = branchSecurityService.resolveAllowedBranchId(actor, branchId);
 
@@ -53,22 +53,22 @@ public class AppointmentManagementService {
                 : appointmentRepository.findByBranchIdOrderByCreatedAtDesc(allowedBranch);
 
         return appointments.stream()
-                .map(AppointmentMapper::toResponse)
+                .map(AppointmentMapper::toStaffResponse)
                 .toList();
     }
 
     // Get a single appointment
     @Transactional(readOnly = true)
-    public AppointmentResponse getAppointment(User actor, UUID appointmentId) {
+    public StaffAppointmentResponse getAppointment(User actor, UUID appointmentId) {
 
         Appointment appointment = resolveAppointmentWithBranchCheck(actor, appointmentId);
-        return AppointmentMapper.toResponse(appointment);
+        return AppointmentMapper.toStaffResponse(appointment);
     }
 
     // Update appointment status (Admin & Manager)
     @Transactional
-    public AppointmentResponse updateStatus(User actor, UUID appointmentId, AppointmentStatus newStatus) {
-        if (!UPDATEABLE_STATUSES.contains(newStatus)) {
+    public StaffAppointmentResponse updateStatus(User actor, UUID appointmentId, AppointmentStatus newStatus) {
+        if (!UPDATABLE_STATUSES.contains(newStatus)) {
             throw new IllegalArgumentException("Allowed statuses: CHECKED-IN, NO-SHOW, COMPLETED.");
         }
         Appointment appointment = resolveAppointmentWithBranchCheck(actor, appointmentId);
@@ -85,11 +85,11 @@ public class AppointmentManagementService {
                 Map.of("oldStatus", oldStatus.name(), "newStatus", newStatus.name())
         );
 
-        return AppointmentMapper.toResponse(appointment);
+        return AppointmentMapper.toStaffResponse(appointment);
     }
 
     // Cancel appointment (Admin & Manager)
-    public AppointmentResponse cancel(User actor, UUID appointmentId) {
+    public StaffAppointmentResponse cancel(User actor, UUID appointmentId) {
         Appointment appointment = resolveAppointmentWithBranchCheck(actor, appointmentId);
 
         if (appointment.getStatus() != AppointmentStatus.BOOKED) {
@@ -116,7 +116,7 @@ public class AppointmentManagementService {
                 appointment.getBranch()
         );
 
-        return AppointmentMapper.toResponse(appointment);
+        return AppointmentMapper.toStaffResponse(appointment);
     }
 
 
