@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -24,7 +25,7 @@ public class PublicService {
     private final ServiceTypeRepository serviceTypeRepository;
     private final SlotRepository slotRepository;
 
-    // ── Branches ──────────────────────────────────────────────────────────────
+    // ── Branches
 
     public List<BranchResponse> getAllBranches() {
         return branchRepository.findByActiveTrue()
@@ -32,7 +33,7 @@ public class PublicService {
                 .map(BranchResponse::from)
                 .toList();
     }
-    // ── Branch by ID ──────────────────────────────────────────────────────────
+    // ── Branch by ID
 
     public BranchResponse getBranchById(UUID branchId) {
         Branch branch = branchRepository.findByIdAndActiveTrue(branchId)
@@ -40,7 +41,7 @@ public class PublicService {
         return BranchResponse.from(branch);
     }
 
-    // ── Services by Branch ────────────────────────────────────────────────────
+    // ── Services by Branch
 
     public List<ServiceTypeResponse> getServicesByBranch(UUID branchId) {
         // Verify branch exists and is active
@@ -52,7 +53,7 @@ public class PublicService {
                 .map(ServiceTypeResponse::from)
                 .toList();
     }
-    // ── Service by ID ─────────────────────────────────────────────────────────
+    // ── Service by ID
 
     public ServiceTypeResponse getServiceById(UUID serviceId, UUID branchId) {
         ServiceType serviceType = serviceTypeRepository.findByIdAndBranchId(serviceId, branchId)
@@ -60,9 +61,9 @@ public class PublicService {
         return ServiceTypeResponse.from(serviceType);
     }
 
-    // ── Available Slots by Branch + Service ───────────────────────────────────
+    // ── Available Slots by Branch + Service
 
-    public List<SlotResponse> getAvailableSlots(UUID branchId, UUID serviceTypeId) {
+    public List<SlotResponse> getAvailableSlots(UUID branchId, UUID serviceTypeId, LocalDate date) {
         // Verify branch exists
         branchRepository.findByIdAndActiveTrue(branchId)
                 .orElseThrow(() -> new IllegalArgumentException("Branch not found"));
@@ -71,6 +72,17 @@ public class PublicService {
         serviceTypeRepository.findByIdAndBranchId(serviceTypeId, branchId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Service not found for this branch"));
+
+        // Check if date is passed
+        if (date != null) {
+            LocalDateTime start = date.atStartOfDay();
+            LocalDateTime end = date.atTime(23, 59, 59);
+            return slotRepository.findAvailableSlotsByDate(branchId, serviceTypeId, start, end)
+                    .stream()
+                    .filter(s -> !s.isFull())
+                    .map(SlotResponse::from)
+                    .toList();
+        }
 
         // Only return future slots that are not full and not deleted
         return slotRepository.findAvailableSlots(branchId, serviceTypeId, LocalDateTime.now())

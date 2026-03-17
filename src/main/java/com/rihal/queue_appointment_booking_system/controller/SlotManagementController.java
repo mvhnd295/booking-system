@@ -4,11 +4,15 @@ import com.rihal.queue_appointment_booking_system.domain.entity.User;
 import com.rihal.queue_appointment_booking_system.dto.request.SlotRequest;
 import com.rihal.queue_appointment_booking_system.dto.request.UpdateSlotRequest;
 import com.rihal.queue_appointment_booking_system.dto.response.ApiResponse;
+import com.rihal.queue_appointment_booking_system.dto.response.PagedResponse;
 import com.rihal.queue_appointment_booking_system.dto.response.SlotManagementResponse;
 import com.rihal.queue_appointment_booking_system.service.AppConfigService;
 import com.rihal.queue_appointment_booking_system.service.SlotManagementService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +26,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @RequestMapping("/api/slots")
 @PreAuthorize("hasAnyRole('ADMIN', 'BRANCH_MANAGER')")
+@Tag(name = "Slots", description = "Slot creation, update, and soft delete \u2014 Manager and Admin")
 public class SlotManagementController {
 
     private final SlotManagementService slotService;
@@ -33,11 +38,15 @@ public class SlotManagementController {
      * Manager: always scoped to own branch
      */
     @GetMapping
-    public ResponseEntity<ApiResponse<List<SlotManagementResponse>>> list(
+    public ResponseEntity<ApiResponse<PagedResponse<SlotManagementResponse>>> list(
             @AuthenticationPrincipal User actor,
-            @RequestParam(required = false) UUID branchId
+            @RequestParam(required = false) UUID branchId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String term
     ) {
-        List<SlotManagementResponse> slots = slotService.listSlots(actor, branchId);
+        PagedResponse<SlotManagementResponse> slots = slotService.listSlots(
+                actor, branchId, term, PageRequest.of(page, size, Sort.by("createdAt").descending()));
         return ResponseEntity.ok(ApiResponse.success("Slots retrieved.", slots));
     }
 

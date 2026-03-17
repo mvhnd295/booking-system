@@ -1,5 +1,6 @@
 package com.rihal.queue_appointment_booking_system.service;
 
+import com.rihal.queue_appointment_booking_system.audit.AuditService;
 import com.rihal.queue_appointment_booking_system.config.AppConfigKeys;
 import com.rihal.queue_appointment_booking_system.domain.entity.AppConfig;
 import com.rihal.queue_appointment_booking_system.domain.entity.Slot;
@@ -53,7 +54,62 @@ public class AppConfigService {
         return days;
     }
 
-    // Hard delete cleanup (idempotent)
+    // ── Rate limit config ─────────────────────────────────────────────────────
+
+    // Get max bookings per day
+    public int getMaxBookingsPerDay() {
+        return appConfigRepository.findById(AppConfigKeys.MAX_BOOKING_PER_DAY)
+                .map(c -> Integer.parseInt(c.getValue()))
+                .orElse(3);
+    }
+
+    // Get max reschedules per day
+    public int getMaxReschedulesPerDay() {
+        return appConfigRepository.findById(AppConfigKeys.MAX_RESCHEDULE_PER_DAY)
+                .map(c -> Integer.parseInt(c.getValue()))
+                .orElse(2);
+    }
+
+    // Update max bookings per day
+    @Transactional
+    public int updateMaxBookingsPerDay(int max, User actor) {
+        AppConfig config = appConfigRepository
+                .findById(AppConfigKeys.MAX_BOOKING_PER_DAY)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Appconfig key not found. Check migration V19."));
+
+        config.setValue(String.valueOf(max));
+        config.setUpdatedAt(LocalDateTime.now());
+        config.setUpdatedBy(actor);
+        appConfigRepository.save(config);
+
+        log.info("Max bookings per day updated to {} by {}", max, actor.getUsername());
+        return max;
+    }
+
+    // Update max reschedules per day
+    @Transactional
+    public int updateMaxReschedulesPerDay(int max, User actor) {
+        AppConfig config = appConfigRepository
+                .findById(AppConfigKeys.MAX_RESCHEDULE_PER_DAY)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Appconfig key not found. Check migration V19."));
+
+        config.setValue(String.valueOf(max));
+        config.setUpdatedAt(LocalDateTime.now());
+        config.setUpdatedBy(actor);
+        appConfigRepository.save(config);
+
+        log.info("Max reschedules per day updated to {} by {}", max, actor.getUsername());
+        return max;
+    }
+
+
+    /**
+     * Hard delete cleanup (idempotent)
+     * @param actor -> user triggering the cleanup (null if triggered by scheduler)
+     * @return number of expired soft-deleted slots (0 if none found)
+     */
     @Transactional
     public int runCleanUp(User actor) {
         int retentionDays = retentionDays();
@@ -74,20 +130,36 @@ public class AppConfigService {
             // Hard delete slot
             slotRepository.delete(slot);
 
-            // Audit log (old AuditLog entries of soft deleted slots are preserved
-            auditService.log(
-                    AuditAction.SLOT_HARD_DELETED,
-                    actor,
-                    EntityType.SLOT,
-                    slot.getId(),
-                    slot.getBranch(),
-                    Map.of(
-                            "deletedAt", slot.getDeletedAt().toString(),
-                            "retentionDays", String.valueOf(retentionDays)
-                    )
-            );
+            // Audit log (old AuditLog entries of soft deleted slots are preserved)
+            // Use log for user and logSystem for scheduler
+            if (actor != null) {
+                auditService.log(
+                        AuditAction.SLOT_HARD_DELETED,
+                        actor,
+                        EntityType.SLOT,
+                        slot.getId(),
+                        slot.getBranch(),
+                        Map.of(
+                                "deletedAt", slot.getDeletedAt().toString(),
+                                "retentionDays", String.valueOf(retentionDays)
+                        )
+                );
+            } else {
+                // scheduler-triggered (log without an actor)
+                auditService.logSystem(
+                        AuditAction.SLOT_HARD_DELETED,
+                        EntityType.SLOT,
+                        slot.getId(),
+                        slot.getBranch(),
+                        Map.of(
+                                "deletedAt", slot.getDeletedAt().toString(),
+                                "retentionDays", String.valueOf(retentionDays),
+                                "SCHEDULER", true
+                        )
+                );
+            }
         }
-        log.info("Cleanup job done - Hard deleted: {} expired slots", expiredSlots.size());
+        log.info("Cleanup job done - Hard deleted: {} expired slot(s)", expiredSlots.size());
         return expiredSlots.size();
     }
 }

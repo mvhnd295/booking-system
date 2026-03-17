@@ -4,8 +4,12 @@ import com.rihal.queue_appointment_booking_system.domain.entity.Customer;
 import com.rihal.queue_appointment_booking_system.domain.entity.User;
 import com.rihal.queue_appointment_booking_system.dto.response.CustomerMapper;
 import com.rihal.queue_appointment_booking_system.dto.response.CustomerResponse;
+import com.rihal.queue_appointment_booking_system.dto.response.PagedResponse;
 import com.rihal.queue_appointment_booking_system.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,13 +24,15 @@ public class CustomerManagementService {
 
     private final CustomerRepository customerRepo;
 
+    @Cacheable(value = "customers", key = "#term + '_' + #pageable.pageNumber + '_' + #pageable.pageSize")
     @Transactional(readOnly = true)
-    public List<CustomerResponse> listCustomers() {
-        return customerRepo
-                .findAllByOrderByCreatedAtDesc()
+    public PagedResponse<CustomerResponse> listCustomers(String term, Pageable pageable) {
+        Page<Customer> page = customerRepo.searchCustomers(term, pageable);
+        List<CustomerResponse> mapped = page.getContent()
                 .stream()
                 .map(CustomerMapper::toResponse)
                 .toList();
+        return PagedResponse.from(page, mapped);
     }
     @Transactional(readOnly = true)
     public CustomerResponse getCustomer(UUID customerId) {
@@ -39,3 +45,4 @@ public class CustomerManagementService {
         return CustomerMapper.toResponse(customer);
     }
 }
+

@@ -1,6 +1,7 @@
 package com.rihal.queue_appointment_booking_system.service;
 
 // Service for Admin and Managers to manage staff
+import com.rihal.queue_appointment_booking_system.audit.AuditService;
 import com.rihal.queue_appointment_booking_system.domain.entity.ServiceType;
 import com.rihal.queue_appointment_booking_system.domain.entity.Staff;
 import com.rihal.queue_appointment_booking_system.domain.entity.StaffServiceType;
@@ -8,11 +9,16 @@ import com.rihal.queue_appointment_booking_system.domain.entity.User;
 import com.rihal.queue_appointment_booking_system.domain.enums.AuditAction;
 import com.rihal.queue_appointment_booking_system.domain.enums.EntityType;
 import com.rihal.queue_appointment_booking_system.dto.response.StaffMapper;
+import com.rihal.queue_appointment_booking_system.dto.response.PagedResponse;
 import com.rihal.queue_appointment_booking_system.dto.response.StaffResponse;
 import com.rihal.queue_appointment_booking_system.repository.ServiceTypeRepository;
 import com.rihal.queue_appointment_booking_system.repository.StaffRepository;
 import com.rihal.queue_appointment_booking_system.repository.StaffServiceTypeRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,24 +39,27 @@ public class StaffManagementService {
     private final AuditService auditService;
 
     // List staff for Admin or Branch manager
+    @Cacheable(value = "staff", key = "#actor.id + '_' + #term + '_' + #pageable.pageNumber + '_' + #pageable.pageSize")
     @Transactional(readOnly = true)
-    public List<StaffResponse> listStaff(User actor) {
-        List<Staff> staffList;
+    public PagedResponse<StaffResponse> listStaff(User actor, String term, Pageable pageable) {
+        Page<Staff> page;
 
         switch (actor.getRole().getName()) {
-            case ADMIN -> staffList = staffRepo.findAll();
+            case ADMIN -> page = staffRepo.searchAllStaff(term, pageable);
             case BRANCH_MANAGER -> {
                 UUID branchId = branchSecurityService.getManagerBranchId(actor);
-                staffList = staffRepo.findAllByBranchId(branchId);
+                page = staffRepo.searchStaffByBranch(term, branchId, pageable);
             }
             default -> throw new SecurityException("Access denied.");
         }
 
-        return staffList.stream().map(StaffMapper::toStaffResponse).toList();
+        List<StaffResponse> mapped = page.getContent().stream().map(StaffMapper::toStaffResponse).toList();
+        return PagedResponse.from(page, mapped);
     }
 
     // Assign service to staff member
     // Takes a list of service type IDs because you can assign a single staff multiple service types
+    @CacheEvict(value = "staff", allEntries = true)
     @Transactional
     public StaffResponse assignService(User actor, UUID staffId, List<UUID> serviceTypeIds) {
         Staff staff = resolveStaff(staffId);

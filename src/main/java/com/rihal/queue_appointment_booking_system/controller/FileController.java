@@ -8,6 +8,7 @@ import com.rihal.queue_appointment_booking_system.repository.AppointmentReposito
 import com.rihal.queue_appointment_booking_system.repository.AttachmentRepository;
 import com.rihal.queue_appointment_booking_system.repository.CustomerRepository;
 import com.rihal.queue_appointment_booking_system.storage.FileStorageService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -24,6 +25,7 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/files")
+@Tag(name = "Files", description = "Secured file retrieval for ID images and attachments")
 public class FileController {
 
     private final FileStorageService fileStorageService;

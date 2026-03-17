@@ -1,19 +1,24 @@
 package com.rihal.queue_appointment_booking_system.service;
 
+import com.rihal.queue_appointment_booking_system.audit.AuditService;
 import com.rihal.queue_appointment_booking_system.domain.entity.*;
 import com.rihal.queue_appointment_booking_system.domain.enums.AppointmentStatus;
 import com.rihal.queue_appointment_booking_system.domain.enums.AuditAction;
 import com.rihal.queue_appointment_booking_system.domain.enums.EntityType;
-import com.rihal.queue_appointment_booking_system.dto.request.BookAppointmentRequest;
 import com.rihal.queue_appointment_booking_system.dto.request.RescheduleAppointmentRequest;
 import com.rihal.queue_appointment_booking_system.dto.response.AppointmentMapper;
 import com.rihal.queue_appointment_booking_system.dto.response.AppointmentResponse;
+import com.rihal.queue_appointment_booking_system.dto.response.PagedResponse;
 import com.rihal.queue_appointment_booking_system.repository.AppointmentRepository;
 import com.rihal.queue_appointment_booking_system.repository.AttachmentRepository;
 import com.rihal.queue_appointment_booking_system.repository.CustomerRepository;
 import com.rihal.queue_appointment_booking_system.repository.SlotRepository;
 import com.rihal.queue_appointment_booking_system.storage.FileStorageService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -43,12 +48,18 @@ public class CustomerAppointmentService {
     private final AttachmentRepository attachmentRepository;
     private final FileStorageService fileStorageService;
     private final AuditService auditService;
+    private final RateLimitService rateLimitService;
 
     // ── Book ──────────────────────────────────────────────────────────────────
 
+    @CacheEvict(value = "customerAppointments", allEntries = true)
     @Transactional
     public AppointmentResponse book(User actor, UUID slotId, MultipartFile attachmentFile) {
         Customer customer = resolveCustomer(actor);
+
+        // Rate limit check — booking
+        rateLimitService.checkBookingLimit(customer.getId());
+
         Slot slot = resolveSlot(slotId);
 
         validateBooking(customer, slot);
@@ -95,13 +106,15 @@ public class CustomerAppointmentService {
 
     // ── List my appointments ─────────────────────────────────────────────────
 
+    @Cacheable(value = "customerAppointments", key = "#actor.id + '_' + #term + '_' + #pageable.pageNumber + '_' + #pageable.pageSize")
     @Transactional(readOnly = true)
-    public List<AppointmentResponse> listMine(User actor) {
-        return appointmentRepository
-                .findByCustomerIdOrderByCreatedAtDesc(actor.getId())
-                .stream()
+    public PagedResponse<AppointmentResponse> listMine(User actor, String term, Pageable pageable) {
+        Page<Appointment> page = appointmentRepository
+                .searchByCustomer(term, actor.getId(), pageable);
+        List<AppointmentResponse> mapped = page.getContent().stream()
                 .map(AppointmentMapper::toResponse)
                 .toList();
+        return PagedResponse.from(page, mapped);
     }
 
     // ── Get one appointment ──────────────────────────────────────────────────
@@ -150,6 +163,9 @@ public class CustomerAppointmentService {
     @Transactional
     public AppointmentResponse reschedule(User actor, UUID appointmentId,
                                           RescheduleAppointmentRequest request) {
+        // Rate limit check — reschedule
+        rateLimitService.checkRescheduleLimit(actor.getId());
+
         Appointment appointment = resolveOwnAppointment(actor, appointmentId);
 
         // Any active status can be rescheduled

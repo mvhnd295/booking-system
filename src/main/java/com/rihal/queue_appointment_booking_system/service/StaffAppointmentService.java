@@ -1,14 +1,20 @@
 package com.rihal.queue_appointment_booking_system.service;
 
+import com.rihal.queue_appointment_booking_system.audit.AuditService;
 import com.rihal.queue_appointment_booking_system.domain.entity.Appointment;
 import com.rihal.queue_appointment_booking_system.domain.entity.User;
 import com.rihal.queue_appointment_booking_system.domain.enums.AppointmentStatus;
 import com.rihal.queue_appointment_booking_system.domain.enums.AuditAction;
 import com.rihal.queue_appointment_booking_system.domain.enums.EntityType;
 import com.rihal.queue_appointment_booking_system.dto.response.AppointmentMapper;
+import com.rihal.queue_appointment_booking_system.dto.response.PagedResponse;
 import com.rihal.queue_appointment_booking_system.dto.response.StaffAppointmentResponse;
 import com.rihal.queue_appointment_booking_system.repository.AppointmentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,12 +32,14 @@ public class StaffAppointmentService {
             Set.of(AppointmentStatus.CHECKED_IN, AppointmentStatus.NO_SHOW, AppointmentStatus.COMPLETED);
 
     // List assigned appointments
+    @Cacheable(value = "staffAppointments", key = "#actor.id + '_' + #term + '_' + #pageable.pageNumber + '_' + #pageable.pageSize")
     @Transactional(readOnly = true)
-    public List<StaffAppointmentResponse> listMyAppointments(User actor) {
-        return appRepo.findByStaffIdOrderByCreatedAtDesc(actor.getId())
-                .stream()
+    public PagedResponse<StaffAppointmentResponse> listMyAppointments(User actor, String term, Pageable pageable) {
+        Page<Appointment> page = appRepo.searchByStaff(term, actor.getId(), pageable);
+        List<StaffAppointmentResponse> mapped = page.getContent().stream()
                 .map(AppointmentMapper::toStaffResponse)
                 .toList();
+        return PagedResponse.from(page, mapped);
     }
     // Get one assigned appointment
     @Transactional(readOnly = true)
@@ -40,6 +48,7 @@ public class StaffAppointmentService {
     }
 
     // Update assigned appointment status
+    @CacheEvict(value = "staffAppointments", allEntries = true)
     @Transactional
     public StaffAppointmentResponse updateStatus(User actor, UUID appointmentId,
                                                  AppointmentStatus newStatus) {

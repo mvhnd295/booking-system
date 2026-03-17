@@ -1,5 +1,6 @@
 package com.rihal.queue_appointment_booking_system.service;
 
+import com.rihal.queue_appointment_booking_system.audit.AuditService;
 import com.rihal.queue_appointment_booking_system.domain.entity.*;
 import com.rihal.queue_appointment_booking_system.domain.enums.AuditAction;
 import com.rihal.queue_appointment_booking_system.domain.enums.EntityType;
@@ -7,12 +8,17 @@ import com.rihal.queue_appointment_booking_system.dto.request.SlotRequest;
 import com.rihal.queue_appointment_booking_system.dto.request.UpdateSlotRequest;
 import com.rihal.queue_appointment_booking_system.dto.response.SlotManagementResponse;
 import com.rihal.queue_appointment_booking_system.dto.response.SlotMapper;
+import com.rihal.queue_appointment_booking_system.dto.response.PagedResponse;
 import com.rihal.queue_appointment_booking_system.repository.BranchRepository;
 import com.rihal.queue_appointment_booking_system.repository.ServiceTypeRepository;
 import com.rihal.queue_appointment_booking_system.repository.SlotRepository;
 import com.rihal.queue_appointment_booking_system.repository.StaffRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +43,7 @@ public class SlotManagementService {
 
     // Create a slot returns a list of slots
     // can work for bulk or single slot creation (list containing one slot)
+    @CacheEvict(value = "slots", allEntries = true)
     @Transactional
     public List<SlotManagementResponse> createSlots(User actor, List<SlotRequest> requests) {
         return requests.stream().map(r -> {
@@ -97,15 +104,17 @@ public class SlotManagementService {
     }
 
     // List slots (Admin - all, Manager - branch-scoped)
+    @Cacheable(value = "slots", key = "#actor.id + '_' + #branchId + '_' + #term + '_' + #pageable.pageNumber + '_' + #pageable.pageSize")
     @Transactional(readOnly = true)
-    public List<SlotManagementResponse> listSlots(User actor, UUID branchId) {
+    public PagedResponse<SlotManagementResponse> listSlots(User actor, UUID branchId, String term, Pageable pageable) {
         UUID allowedBranchId = branchSecurityService.resolveAllowedBranchId(actor, branchId);
 
-        List<Slot> slots = (allowedBranchId == null)
-                ? slotRepository.findAll()
-                : slotRepository.findAllByBranchId(allowedBranchId);
+        Page<Slot> page = (allowedBranchId == null)
+                ? slotRepository.searchAll(term, pageable)
+                : slotRepository.searchByBranch(term, allowedBranchId, pageable);
 
-        return slots.stream().map(SlotMapper::toResponse).toList();
+        List<SlotManagementResponse> mapped = page.getContent().stream().map(SlotMapper::toResponse).toList();
+        return PagedResponse.from(page, mapped);
     }
 
     // Update a slot

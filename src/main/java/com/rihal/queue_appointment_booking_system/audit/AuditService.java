@@ -1,4 +1,4 @@
-package com.rihal.queue_appointment_booking_system.service;
+package com.rihal.queue_appointment_booking_system.audit;
 
 import com.rihal.queue_appointment_booking_system.domain.entity.AuditLog;
 import com.rihal.queue_appointment_booking_system.domain.entity.Branch;
@@ -56,5 +56,25 @@ public class AuditService {
             Branch branch
     ) {
         log(action, actor, targetEntityType, targetEntityId, branch, null);
+    }
+
+    // System/scheduler-triggered log (no actor)
+    public void logSystem(
+            AuditAction action,
+            EntityType targetEntityType,
+            UUID targetEntityId,
+            Branch branch,
+            Map<String, Object> metadata
+    ) {
+        AuditLog entry = new AuditLog();
+        entry.setAction(action);
+        entry.setActorId(null);   // no user — system action
+        entry.setActorRole(null); // no role
+        entry.setTargetEntityType(targetEntityType);
+        entry.setTargetEntityId(targetEntityId.toString());
+        entry.setBranch(branch);
+        entry.setMetadata(metadata);
+        entry.setTimestamp(LocalDateTime.now());
+        auditLogRepository.save(entry);
     }
 }

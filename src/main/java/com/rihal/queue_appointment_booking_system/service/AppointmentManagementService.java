@@ -1,5 +1,6 @@
 package com.rihal.queue_appointment_booking_system.service;
 
+import com.rihal.queue_appointment_booking_system.audit.AuditService;
 import com.rihal.queue_appointment_booking_system.domain.entity.Appointment;
 import com.rihal.queue_appointment_booking_system.domain.entity.Slot;
 import com.rihal.queue_appointment_booking_system.domain.entity.User;
@@ -7,10 +8,15 @@ import com.rihal.queue_appointment_booking_system.domain.enums.AppointmentStatus
 import com.rihal.queue_appointment_booking_system.domain.enums.AuditAction;
 import com.rihal.queue_appointment_booking_system.domain.enums.EntityType;
 import com.rihal.queue_appointment_booking_system.dto.response.AppointmentMapper;
+import com.rihal.queue_appointment_booking_system.dto.response.PagedResponse;
 import com.rihal.queue_appointment_booking_system.dto.response.StaffAppointmentResponse;
 import com.rihal.queue_appointment_booking_system.repository.AppointmentRepository;
 import com.rihal.queue_appointment_booking_system.repository.SlotRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,18 +49,20 @@ public class AppointmentManagementService {
      *  branchId = null -> Admin -> return all appointments
      *  branchId != null -> Manager -> return all appointments of that branch
      */
+    @Cacheable(value = "appointments", key = "#actor.id + '_' + #branchId + '_' + #term + '_' + #pageable.pageNumber + '_' + #pageable.pageSize")
     @Transactional(readOnly = true)
-    public List<StaffAppointmentResponse> listAppointments(User actor, UUID branchId) {
+    public PagedResponse<StaffAppointmentResponse> listAppointments(User actor, UUID branchId, String term, Pageable pageable) {
 
         UUID allowedBranch = branchSecurityService.resolveAllowedBranchId(actor, branchId);
 
-        List<Appointment> appointments = (allowedBranch == null)
-                ? appointmentRepository.findAllByOrderByCreatedAtDesc()
-                : appointmentRepository.findByBranchIdOrderByCreatedAtDesc(allowedBranch);
+        Page<Appointment> page = (allowedBranch == null)
+                ? appointmentRepository.searchAll(term, pageable)
+                : appointmentRepository.searchByBranch(term, allowedBranch, pageable);
 
-        return appointments.stream()
+        List<StaffAppointmentResponse> mapped = page.getContent().stream()
                 .map(AppointmentMapper::toStaffResponse)
                 .toList();
+        return PagedResponse.from(page, mapped);
     }
 
     // Get a single appointment
@@ -66,6 +74,7 @@ public class AppointmentManagementService {
     }
 
     // Update appointment status (Admin & Manager)
+    @CacheEvict(value = "appointments", allEntries = true)
     @Transactional
     public StaffAppointmentResponse updateStatus(User actor, UUID appointmentId, AppointmentStatus newStatus) {
         if (!UPDATABLE_STATUSES.contains(newStatus)) {

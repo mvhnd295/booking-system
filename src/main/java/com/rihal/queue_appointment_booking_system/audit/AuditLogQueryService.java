@@ -1,12 +1,16 @@
-package com.rihal.queue_appointment_booking_system.service;
+package com.rihal.queue_appointment_booking_system.audit;
 
 import com.opencsv.CSVWriter;
 import com.rihal.queue_appointment_booking_system.domain.entity.AuditLog;
 //import com.rihal.queue_appointment_booking_system.domain.entity.User;
 import com.rihal.queue_appointment_booking_system.dto.response.AuditLogMapper;
 import com.rihal.queue_appointment_booking_system.dto.response.AuditLogResponse;
+import com.rihal.queue_appointment_booking_system.dto.response.PagedResponse;
 import com.rihal.queue_appointment_booking_system.repository.AuditLogRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,12 +28,14 @@ public class AuditLogQueryService {
 //    private final BranchSecurityService branchSecurityService;
 
     // List Audit Logs (Admin only)
-    public List<AuditLogResponse> listLogs() {
+    @Cacheable(value = "auditLogs", key = "#term + '_' + #pageable.pageNumber + '_' + #pageable.pageSize")
+    public PagedResponse<AuditLogResponse> listLogs(String term, Pageable pageable) {
         // Not sure if Branch managers can view logs too
         // if so pass User actor -> get ID and use a switch statement on it
         // then use branchSecurityService to get the branch ID of the manager
-        List<AuditLog> logs = auditRepo.findAllByOrderByTimestampDesc();
-        return logs.stream().map(AuditLogMapper::toResponse).toList();
+        Page<AuditLog> page = auditRepo.searchLogs(term, pageable);
+        List<AuditLogResponse> mapped = page.getContent().stream().map(AuditLogMapper::toResponse).toList();
+        return PagedResponse.from(page, mapped);
     }
 
     // Export to CSV

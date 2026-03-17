@@ -5,23 +5,27 @@ import com.rihal.queue_appointment_booking_system.domain.entity.User;
 import com.rihal.queue_appointment_booking_system.domain.enums.AppointmentStatus;
 import com.rihal.queue_appointment_booking_system.dto.request.UpdateAppointmentStatusRequest;
 import com.rihal.queue_appointment_booking_system.dto.response.ApiResponse;
+import com.rihal.queue_appointment_booking_system.dto.response.PagedResponse;
 import com.rihal.queue_appointment_booking_system.dto.response.StaffAppointmentResponse;
 import com.rihal.queue_appointment_booking_system.service.AppointmentManagementService;
 import com.rihal.queue_appointment_booking_system.service.BranchSecurityService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
 @PreAuthorize("hasRole(BRANCH_MANAGER)")
 @RequiredArgsConstructor
 @RequestMapping("/api/manager/appointments")
+@Tag(name = "Manager \u2014 Appointments", description = "Branch-scoped appointment management")
 public class BranchManagerAppointmentController {
 
     private final AppointmentManagementService appointmentManagementService;
@@ -29,12 +33,16 @@ public class BranchManagerAppointmentController {
 
     // GET /api/manager/appointments - list branch-scoped appointments
     @GetMapping
-    public ResponseEntity<ApiResponse<List<StaffAppointmentResponse>>> list(
-            @AuthenticationPrincipal User actor
+    public ResponseEntity<ApiResponse<PagedResponse<StaffAppointmentResponse>>> list(
+            @AuthenticationPrincipal User actor,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String term
             ) {
         UUID branchId = branchSecurityService.getManagerBranchId(actor);
-        List<StaffAppointmentResponse> appointments =
-                appointmentManagementService.listAppointments(actor, branchId);
+        PagedResponse<StaffAppointmentResponse> appointments =
+                appointmentManagementService.listAppointments(actor, branchId, term,
+                        PageRequest.of(page, size, Sort.by("createdAt").descending()));
         return ResponseEntity.ok(ApiResponse.success("Appointments retrieved.", appointments));
     }
 

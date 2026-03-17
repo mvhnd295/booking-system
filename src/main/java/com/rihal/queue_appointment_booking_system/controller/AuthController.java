@@ -5,6 +5,8 @@ import com.rihal.queue_appointment_booking_system.dto.request.RegisterRequest;
 import com.rihal.queue_appointment_booking_system.dto.response.ApiResponse;
 import com.rihal.queue_appointment_booking_system.dto.response.AuthResponse;
 import com.rihal.queue_appointment_booking_system.service.AuthService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -22,6 +24,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 @Validated
+@Tag(name = "Authentication", description = "Register and login")
+@SecurityRequirements
 public class AuthController {
 
     private final AuthService authService;
