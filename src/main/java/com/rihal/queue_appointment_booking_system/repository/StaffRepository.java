@@ -37,4 +37,46 @@ public interface StaffRepository extends JpaRepository<Staff, UUID> {
                     OR LOWER(s.branch.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%')))
             """)
     Page<Staff> searchStaffByBranch(@Param("term") String term, @Param("branchId") UUID branchId, Pageable pageable);
+
+    // ── Two-query pattern: ID-only queries for 2 scopes (admin, branch) ───────
+
+    @Query("""
+            SELECT s.id FROM Staff s
+            WHERE (:term IS NULL OR TRIM(:term) = ''
+                OR LOWER(s.fullName) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                OR LOWER(s.email) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                OR LOWER(s.branch.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%')))
+            """)
+    Page<UUID> findAllIds(@Param("term") String term, Pageable pageable);
+
+    @Query("""
+            SELECT s.id FROM Staff s
+            WHERE s.branch.id = :branchId
+                AND (:term IS NULL OR TRIM(:term) = ''
+                    OR LOWER(s.fullName) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                    OR LOWER(s.email) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                    OR LOWER(s.branch.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%')))
+            """)
+    Page<UUID> findIdsByBranch(@Param("term") String term, @Param("branchId") UUID branchId, Pageable pageable);
+
+    // ── Two-query pattern: fetch full entities with all associations ──────────
+
+    @Query("""
+            SELECT DISTINCT s FROM Staff s
+            JOIN FETCH s.branch
+            LEFT JOIN FETCH s.staffServiceTypes sst
+            LEFT JOIN FETCH sst.serviceType
+            WHERE s.id IN :ids
+            """)
+    List<Staff> findAllWithAssociationsByIds(@Param("ids") List<UUID> ids);
+
+    // Single-entity variant — avoids lazy loads when mapping to a response
+    @Query("""
+            SELECT DISTINCT s FROM Staff s
+            JOIN FETCH s.branch
+            LEFT JOIN FETCH s.staffServiceTypes sst
+            LEFT JOIN FETCH sst.serviceType
+            WHERE s.id = :id
+            """)
+    Optional<Staff> findByIdWithAssociations(@Param("id") UUID id);
 }

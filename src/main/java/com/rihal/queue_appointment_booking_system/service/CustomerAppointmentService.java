@@ -27,6 +27,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -109,12 +111,23 @@ public class CustomerAppointmentService {
     @Cacheable(value = "customerAppointments", key = "#actor.id + '_' + #term + '_' + #pageable.pageNumber + '_' + #pageable.pageSize")
     @Transactional(readOnly = true)
     public PagedResponse<AppointmentResponse> listMine(User actor, String term, Pageable pageable) {
-        Page<Appointment> page = appointmentRepository
-                .searchByCustomer(term, actor.getId(), pageable);
-        List<AppointmentResponse> mapped = page.getContent().stream()
+        // Two-query pattern: 1) fetch IDs with SQL-level pagination
+        Page<UUID> idPage = appointmentRepository.findIdsByCustomer(term, actor.getId(), pageable);
+
+        if (idPage.isEmpty()) {
+            return PagedResponse.from(idPage, List.of());
+        }
+
+        // 2) Fetch full entities with all associations eagerly loaded
+        List<Appointment> appointments = appointmentRepository.findAllWithAssociationsByIds(idPage.getContent());
+        Map<UUID, Appointment> byId = appointments.stream()
+                .collect(Collectors.toMap(Appointment::getId, Function.identity()));
+
+        List<AppointmentResponse> mapped = idPage.getContent().stream()
+                .map(byId::get)
                 .map(AppointmentMapper::toResponse)
                 .toList();
-        return PagedResponse.from(page, mapped);
+        return PagedResponse.from(idPage, mapped);
     }
 
     // ── Get one appointment ──────────────────────────────────────────────────
@@ -231,7 +244,7 @@ public class CustomerAppointmentService {
     }
 
     private Appointment resolveOwnAppointment(User actor, UUID appointmentId) {
-        Appointment appointment = appointmentRepository.findById(appointmentId)
+        Appointment appointment = appointmentRepository.findByIdWithAssociations(appointmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Appointment not found: " + appointmentId));
 
         if (!appointment.getCustomer().getId().equals(actor.getId())) {

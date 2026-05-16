@@ -64,7 +64,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
             """)
     long countTodayBookingsByCustomer(@Param("customerId") UUID customerId);
 
-    // Nullify slot reference upon hard-delete
+    // Nullify slot reference upon hard-delete (single slot)
     @Query("""
             UPDATE Appointment a
             SET a.slot = null
@@ -72,6 +72,15 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
             """)
     @Modifying
     void nullifySlotReference(@Param("slotId") UUID slotId);
+
+    // Bulk nullify for cleanup job — one UPDATE instead of N
+    @Query("""
+            UPDATE Appointment a
+            SET a.slot = null
+            WHERE a.slot.id IN :slotIds
+            """)
+    @Modifying
+    void nullifySlotReferences(@Param("slotIds") List<UUID> slotIds);
 
     //  Paginated search queries
 
@@ -115,6 +124,76 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
                     OR LOWER(CAST(a.status AS string)) LIKE LOWER(CONCAT('%', TRIM(:term), '%')))
             """)
     Page<Appointment> searchByStaff(@Param("term") String term, @Param("staffId") UUID staffId, Pageable pageable);
+
+    // ── Two-query pattern: ID-only queries for 4 scopes (admin, branch, customer, staff) ──
+
+    @Query("""
+            SELECT a.id FROM Appointment a
+            WHERE (:term IS NULL OR TRIM(:term) = ''
+                OR LOWER(a.customer.fullName) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                OR LOWER(a.branch.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                OR LOWER(a.serviceType.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                OR LOWER(CAST(a.status AS string)) LIKE LOWER(CONCAT('%', TRIM(:term), '%')))
+            """)
+    Page<UUID> findAllIds(@Param("term") String term, Pageable pageable);
+
+    @Query("""
+            SELECT a.id FROM Appointment a
+            WHERE a.branch.id = :branchId
+                AND (:term IS NULL OR TRIM(:term) = ''
+                    OR LOWER(a.customer.fullName) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                    OR LOWER(a.branch.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                    OR LOWER(a.serviceType.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                    OR LOWER(CAST(a.status AS string)) LIKE LOWER(CONCAT('%', TRIM(:term), '%')))
+            """)
+    Page<UUID> findIdsByBranch(@Param("term") String term, @Param("branchId") UUID branchId, Pageable pageable);
+
+    @Query("""
+            SELECT a.id FROM Appointment a
+            WHERE a.customer.id = :customerId
+                AND (:term IS NULL OR TRIM(:term) = ''
+                    OR LOWER(a.branch.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                    OR LOWER(a.serviceType.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                    OR LOWER(CAST(a.status AS string)) LIKE LOWER(CONCAT('%', TRIM(:term), '%')))
+            """)
+    Page<UUID> findIdsByCustomer(@Param("term") String term, @Param("customerId") UUID customerId, Pageable pageable);
+
+    @Query("""
+            SELECT a.id FROM Appointment a
+            WHERE a.staff.id = :staffId
+                AND (:term IS NULL OR TRIM(:term) = ''
+                    OR LOWER(a.customer.fullName) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                    OR LOWER(a.serviceType.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
+                    OR LOWER(CAST(a.status AS string)) LIKE LOWER(CONCAT('%', TRIM(:term), '%')))
+            """)
+    Page<UUID> findIdsByStaff(@Param("term") String term, @Param("staffId") UUID staffId, Pageable pageable);
+
+    // ── Two-query pattern: fetch full entities with all associations ────────
+
+    @Query("""
+            SELECT DISTINCT a FROM Appointment a
+            JOIN FETCH a.customer
+            JOIN FETCH a.branch
+            JOIN FETCH a.serviceType
+            LEFT JOIN FETCH a.slot
+            LEFT JOIN FETCH a.staff
+            LEFT JOIN FETCH a.attachment
+            WHERE a.id IN :ids
+            """)
+    List<Appointment> findAllWithAssociationsByIds(@Param("ids") List<UUID> ids);
+
+    // Single-entity variant — avoids lazy loads when mapping to a response
+    @Query("""
+            SELECT DISTINCT a FROM Appointment a
+            JOIN FETCH a.customer
+            JOIN FETCH a.branch
+            JOIN FETCH a.serviceType
+            LEFT JOIN FETCH a.slot
+            LEFT JOIN FETCH a.staff
+            LEFT JOIN FETCH a.attachment
+            WHERE a.id = :id
+            """)
+    Optional<Appointment> findByIdWithAssociations(@Param("id") UUID id);
 
     // Queue position
     @Query("""

@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,11 +37,23 @@ public class StaffAppointmentService {
     @Cacheable(value = "staffAppointments", key = "#actor.id + '_' + #term + '_' + #pageable.pageNumber + '_' + #pageable.pageSize")
     @Transactional(readOnly = true)
     public PagedResponse<StaffAppointmentResponse> listMyAppointments(User actor, String term, Pageable pageable) {
-        Page<Appointment> page = appRepo.searchByStaff(term, actor.getId(), pageable);
-        List<StaffAppointmentResponse> mapped = page.getContent().stream()
+        // Two-query pattern: 1) fetch IDs with SQL-level pagination
+        Page<UUID> idPage = appRepo.findIdsByStaff(term, actor.getId(), pageable);
+
+        if (idPage.isEmpty()) {
+            return PagedResponse.from(idPage, List.of());
+        }
+
+        // 2) Fetch full entities with all associations eagerly loaded
+        List<Appointment> appointments = appRepo.findAllWithAssociationsByIds(idPage.getContent());
+        Map<UUID, Appointment> byId = appointments.stream()
+                .collect(Collectors.toMap(Appointment::getId, Function.identity()));
+
+        List<StaffAppointmentResponse> mapped = idPage.getContent().stream()
+                .map(byId::get)
                 .map(AppointmentMapper::toStaffResponse)
                 .toList();
-        return PagedResponse.from(page, mapped);
+        return PagedResponse.from(idPage, mapped);
     }
     // Get one assigned appointment
     @Transactional(readOnly = true)
@@ -89,10 +103,9 @@ public class StaffAppointmentService {
     // helper
     // resolves an appointment and makes sure It's assigned to staff member
     private Appointment resolveStaffAppointment(User actor, UUID appointmentId) {
-        Appointment appointment = appRepo.findById(appointmentId)
+        Appointment appointment = appRepo.findByIdWithAssociations(appointmentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Appointment not found."));
-        // if appointment has no staff assigned or if its assigned to different staff return forbidden
         if (appointment.getStaff() == null
         || !appointment.getStaff().getId().equals(actor.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,

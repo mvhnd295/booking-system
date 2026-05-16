@@ -19,6 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -123,15 +125,16 @@ public class AppConfigService {
             return 0;
         }
 
+        // Nullify all slot references in one UPDATE instead of one per slot.
+        // The original loop called nullifySlotReference(id) N times, producing N round-trips.
+        List<UUID> expiredSlotIds = expiredSlots.stream().map(Slot::getId).toList();
+        appointmentRepository.nullifySlotReferences(expiredSlotIds);
+
+        // deleteAll issues individual DELETEs but within a single flush, which is standard JPA batch behaviour
+        slotRepository.deleteAll(expiredSlots);
+
+        // Audit log per slot — intentionally kept per-item (each hard-delete is a distinct audited event)
         for (Slot slot : expiredSlots) {
-            // Nullify slot reference in appointments without deleting appointments
-            appointmentRepository.nullifySlotReference(slot.getId());
-
-            // Hard delete slot
-            slotRepository.delete(slot);
-
-            // Audit log (old AuditLog entries of soft deleted slots are preserved)
-            // Use log for user and logSystem for scheduler
             if (actor != null) {
                 auditService.log(
                         AuditAction.SLOT_HARD_DELETED,
@@ -145,7 +148,6 @@ public class AppConfigService {
                         )
                 );
             } else {
-                // scheduler-triggered (log without an actor)
                 auditService.logSystem(
                         AuditAction.SLOT_HARD_DELETED,
                         EntityType.SLOT,

@@ -28,7 +28,7 @@ public class QueuePositionService {
     // get queue position for customer
     @Transactional(readOnly = true)
     public QueuePositionResponse getQueuePosition(User actor, UUID appointmentId) {
-        Appointment appointment = appRepo.findById(appointmentId)
+        Appointment appointment = appRepo.findByIdWithAssociations(appointmentId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Appointment not found."

@@ -24,9 +24,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -42,19 +48,32 @@ public class StaffManagementService {
     @Cacheable(value = "staff", key = "#actor.id + '_' + #term + '_' + #pageable.pageNumber + '_' + #pageable.pageSize")
     @Transactional(readOnly = true)
     public PagedResponse<StaffResponse> listStaff(User actor, String term, Pageable pageable) {
-        Page<Staff> page;
+        // Two-query pattern: 1) fetch IDs with SQL-level pagination
+        Page<UUID> idPage;
 
         switch (actor.getRole().getName()) {
-            case ADMIN -> page = staffRepo.searchAllStaff(term, pageable);
+            case ADMIN -> idPage = staffRepo.findAllIds(term, pageable);
             case BRANCH_MANAGER -> {
                 UUID branchId = branchSecurityService.getManagerBranchId(actor);
-                page = staffRepo.searchStaffByBranch(term, branchId, pageable);
+                idPage = staffRepo.findIdsByBranch(term, branchId, pageable);
             }
             default -> throw new SecurityException("Access denied.");
         }
 
-        List<StaffResponse> mapped = page.getContent().stream().map(StaffMapper::toStaffResponse).toList();
-        return PagedResponse.from(page, mapped);
+        if (idPage.isEmpty()) {
+            return PagedResponse.from(idPage, List.of());
+        }
+
+        // 2) Fetch full entities with all associations eagerly loaded
+        List<Staff> staffList = staffRepo.findAllWithAssociationsByIds(idPage.getContent());
+        Map<UUID, Staff> byId = staffList.stream()
+                .collect(Collectors.toMap(Staff::getId, Function.identity()));
+
+        List<StaffResponse> mapped = idPage.getContent().stream()
+                .map(byId::get)
+                .map(StaffMapper::toStaffResponse)
+                .toList();
+        return PagedResponse.from(idPage, mapped);
     }
 
     // Assign service to staff member
@@ -63,39 +82,47 @@ public class StaffManagementService {
     @Transactional
     public StaffResponse assignService(User actor, UUID staffId, List<UUID> serviceTypeIds) {
         Staff staff = resolveStaff(staffId);
-
-        // Make sure actor (admin, manager) can act on the staff's branch
         branchSecurityService.assertBranchAccess(actor, staff.getBranch().getId());
 
-        for (UUID id : serviceTypeIds) {
-            // Check service type belongs to the same branch as staff member
-            ServiceType service = serviceTypeRepo
-                    .findByIdAndBranchId(id, staff.getBranch().getId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Service type does not belong to the same branch as this staff member: "
-                                    + id
-                    ));
-            // Check if the staff member is already assigned the requested service type
-            // Continue if so
-            if (staffServiceTypeRepo.existsByStaffIdAndServiceTypeId(staff.getId(), id)) continue;
+        // Batch-fetch all requested service types in one query and index by ID.
+        // Without this, the loop below would fire one findByIdAndBranchId per ID — O(N) SELECTs.
+        Map<UUID, ServiceType> serviceMap = serviceTypeRepo
+                .findAllByIdInAndBranchId(serviceTypeIds, staff.getBranch().getId())
+                .stream()
+                .collect(Collectors.toMap(ServiceType::getId, Function.identity()));
 
-            // Assign and audit
+        // Batch-check which service types are already assigned in one query — avoids N EXISTS queries.
+        Set<UUID> alreadyAssigned = new HashSet<>(
+                staffServiceTypeRepo.findAssignedServiceTypeIds(staff.getId(), serviceTypeIds));
+
+        List<StaffServiceType> toSave = new ArrayList<>();
+        for (UUID id : serviceTypeIds) {
+            ServiceType service = Optional.ofNullable(serviceMap.get(id))
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Service type does not belong to the same branch as this staff member: " + id));
+            if (alreadyAssigned.contains(id)) continue;
             StaffServiceType sst = new StaffServiceType();
             sst.setStaff(staff);
             sst.setServiceType(service);
-            staffServiceTypeRepo.save(sst);
-
-            auditService.log(
-                    AuditAction.STAFF_ASSIGNED_TO_SERVICE,
-                    actor,
-                    EntityType.STAFF,
-                    staff.getId(),
-                    staff.getBranch(),
-                    Map.of("serviceTypeId", id.toString(),
-                            "serviceTypeName", service.getName())
-            );
+            toSave.add(sst);
         }
-        // Reload the staff again to get updated services assigned
+
+        if (!toSave.isEmpty()) {
+            staffServiceTypeRepo.saveAll(toSave);
+            for (StaffServiceType sst : toSave) {
+                auditService.log(
+                        AuditAction.STAFF_ASSIGNED_TO_SERVICE,
+                        actor,
+                        EntityType.STAFF,
+                        staff.getId(),
+                        staff.getBranch(),
+                        Map.of("serviceTypeId", sst.getServiceType().getId().toString(),
+                                "serviceTypeName", sst.getServiceType().getName())
+                );
+            }
+        }
+
+        // Reload with associations so the mapper can access staffServiceTypes without lazy loads
         return StaffMapper.toStaffResponse(resolveStaff(staffId));
     }
 
@@ -103,7 +130,7 @@ public class StaffManagementService {
     public StaffResponse removeService(User actor, UUID staffId, UUID serviceTypeId) {
         Staff staff = resolveStaff(staffId);
         branchSecurityService.assertBranchAccess(actor, staff.getBranch().getId());
-        if (staffServiceTypeRepo.existsByStaffIdAndServiceTypeId(
+        if (!staffServiceTypeRepo.existsByStaffIdAndServiceTypeId(
                 staff.getId(), serviceTypeId
         )) {
             throw new IllegalArgumentException(
@@ -123,9 +150,9 @@ public class StaffManagementService {
         return StaffMapper.toStaffResponse(resolveStaff(staffId));
     }
 
-    // helper
+    // helper — always loads with associations so StaffMapper never triggers lazy loads
     private Staff resolveStaff(UUID staffId) {
-        return staffRepo.findById(staffId)
+        return staffRepo.findByIdWithAssociations(staffId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Staff not found: "+ staffId));
     }

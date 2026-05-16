@@ -27,7 +27,12 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -46,39 +51,50 @@ public class SlotManagementService {
     @CacheEvict(value = "slots", allEntries = true)
     @Transactional
     public List<SlotManagementResponse> createSlots(User actor, List<SlotRequest> requests) {
+        // Batch-fetch all distinct branches, service types, and staff referenced in the request list.
+        // Without this, each iteration of the stream below would fire 2–3 individual SELECT queries
+        // (one per findById call), producing O(N) database round-trips for N slots.
+        Set<UUID> branchIds   = requests.stream().map(SlotRequest::branchId).collect(Collectors.toSet());
+        Set<UUID> serviceIds  = requests.stream().map(SlotRequest::serviceTypeId).collect(Collectors.toSet());
+        Set<UUID> staffIds    = requests.stream().map(SlotRequest::staffId)
+                                        .filter(Objects::nonNull).collect(Collectors.toSet());
+
+        Map<UUID, Branch>      branches = branchRepo.findAllById(branchIds).stream()
+                .collect(Collectors.toMap(Branch::getId, Function.identity()));
+        Map<UUID, ServiceType> services = serviceRepo.findAllById(serviceIds).stream()
+                .collect(Collectors.toMap(ServiceType::getId, Function.identity()));
+        Map<UUID, Staff>       staffMap = staffIds.isEmpty() ? Map.of()
+                : staffRepo.findAllById(staffIds).stream()
+                        .collect(Collectors.toMap(Staff::getId, Function.identity()));
+
         return requests.stream().map(r -> {
-            // Check branch access
             UUID branchId = r.branchId();
             branchSecurityService.assertBranchAccess(actor, branchId);
-            Branch branch = branchRepo.findById(branchId)
+
+            Branch branch = Optional.ofNullable(branches.get(branchId))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                             "Branch not found: " + branchId));
 
-            // Get the service type of the slot
             UUID serviceId = r.serviceTypeId();
-            ServiceType serviceType = serviceRepo.findById(serviceId)
+            ServiceType serviceType = Optional.ofNullable(services.get(serviceId))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                             "Service type not found in this branch: " + serviceId));
 
-            // Staff might not be assigned to a slot so nullable
             Staff staff = null;
             if (r.staffId() != null) {
-                staff = staffRepo.findById(r.staffId())
+                staff = Optional.ofNullable(staffMap.get(r.staffId()))
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                                 "Staff not found: " + r.staffId()));
-                // Check staff's branch matches request branch
                 if (!staff.getBranch().getId().equals(branch.getId())) {
                     throw new IllegalStateException("Staff member does not belong to this branch");
                 }
             }
 
-            // Make sure slot time make sense (end time after start time)
             LocalDateTime startAt = r.startAt();
             LocalDateTime endAt = r.endAt();
             log.debug("createSlots: slot start and end time: {} - {}", startAt, endAt);
             validateSlotTimes(startAt, endAt);
 
-            // Create the slot from the request and save
             Slot slot = new Slot();
             slot.setBranch(branch);
             slot.setServiceType(serviceType);
@@ -109,12 +125,25 @@ public class SlotManagementService {
     public PagedResponse<SlotManagementResponse> listSlots(User actor, UUID branchId, String term, Pageable pageable) {
         UUID allowedBranchId = branchSecurityService.resolveAllowedBranchId(actor, branchId);
 
-        Page<Slot> page = (allowedBranchId == null)
-                ? slotRepository.searchAll(term, pageable)
-                : slotRepository.searchByBranch(term, allowedBranchId, pageable);
+        // Two-query pattern: 1) fetch IDs with SQL-level pagination
+        Page<UUID> idPage = (allowedBranchId == null)
+                ? slotRepository.findAllIds(term, pageable)
+                : slotRepository.findIdsByBranch(term, allowedBranchId, pageable);
 
-        List<SlotManagementResponse> mapped = page.getContent().stream().map(SlotMapper::toResponse).toList();
-        return PagedResponse.from(page, mapped);
+        if (idPage.isEmpty()) {
+            return PagedResponse.from(idPage, List.of());
+        }
+
+        // 2) Fetch full entities with all associations eagerly loaded
+        List<Slot> slots = slotRepository.findAllWithAssociationsByIds(idPage.getContent());
+        Map<UUID, Slot> byId = slots.stream()
+                .collect(Collectors.toMap(Slot::getId, Function.identity()));
+
+        List<SlotManagementResponse> mapped = idPage.getContent().stream()
+                .map(byId::get)
+                .map(SlotMapper::toResponse)
+                .toList();
+        return PagedResponse.from(idPage, mapped);
     }
 
     // Update a slot
@@ -124,7 +153,7 @@ public class SlotManagementService {
             UUID slotId,
             UpdateSlotRequest request
     ) {
-        Slot slot = slotRepository.findById(slotId)
+        Slot slot = slotRepository.findByIdWithAssociations(slotId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Slot not found: " + slotId));
 

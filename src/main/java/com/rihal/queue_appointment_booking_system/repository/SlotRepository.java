@@ -27,9 +27,12 @@ public interface SlotRepository extends JpaRepository<Slot, UUID> {
     @Query("SELECT s FROM Slot s WHERE s.id = :id")
     Optional<Slot> findByIdWithLock(@Param("id") UUID id);
 
-    // Active not soft-deleted slots only used in public listing
+    // Active not soft-deleted slots only used in public listing (with JOIN FETCH to avoid N+1)
     @Query("""
             SELECT s FROM Slot s
+            JOIN FETCH s.branch
+            JOIN FETCH s.serviceType
+            LEFT JOIN FETCH s.staff
             WHERE s.branch.id = :branchId 
                 AND s.serviceType.id = :serviceTypeId
                 AND s.deleted = false AND s.active = true
@@ -40,9 +43,12 @@ public interface SlotRepository extends JpaRepository<Slot, UUID> {
                                   @Param("serviceTypeId") UUID serviceTypeId,
                                   @Param("from")LocalDateTime from);
 
-    // Optional date filter
+    // Optional date filter (with JOIN FETCH to avoid N+1)
     @Query("""
     SELECT s FROM Slot s
+    JOIN FETCH s.branch
+    JOIN FETCH s.serviceType
+    LEFT JOIN FETCH s.staff
     WHERE s.branch.id = :branchId
       AND s.serviceType.id = :serviceTypeId
       AND s.active = true
@@ -69,25 +75,46 @@ public interface SlotRepository extends JpaRepository<Slot, UUID> {
             """)
     List<Slot> findExpiredSoftDeletedSlots(@Param("cutoff") LocalDateTime cutoff);
 
-    // ── Paginated search queries ──────────────────────────────────────────────
+    // ── Two-query pattern: ID-only queries for 2 scopes (admin, branch) ───────
 
     @Query("""
-            SELECT s FROM Slot s
+            SELECT s.id FROM Slot s
             WHERE (:term IS NULL OR TRIM(:term) = ''
                 OR LOWER(s.branch.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
                 OR LOWER(s.serviceType.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
                 OR (s.staff IS NOT NULL AND LOWER(s.staff.fullName) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))))
             """)
-    Page<Slot> searchAll(@Param("term") String term, Pageable pageable);
+    Page<UUID> findAllIds(@Param("term") String term, Pageable pageable);
 
     @Query("""
-            SELECT s FROM Slot s
+            SELECT s.id FROM Slot s
             WHERE s.branch.id = :branchId
                 AND (:term IS NULL OR TRIM(:term) = ''
                     OR LOWER(s.branch.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
                     OR LOWER(s.serviceType.name) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))
                     OR (s.staff IS NOT NULL AND LOWER(s.staff.fullName) LIKE LOWER(CONCAT('%', TRIM(:term), '%'))))
             """)
-    Page<Slot> searchByBranch(@Param("term") String term, @Param("branchId") UUID branchId, Pageable pageable);
+    Page<UUID> findIdsByBranch(@Param("term") String term, @Param("branchId") UUID branchId, Pageable pageable);
+
+    // ── Two-query pattern: fetch full entities with all associations ──────────
+
+    @Query("""
+            SELECT DISTINCT s FROM Slot s
+            JOIN FETCH s.branch
+            JOIN FETCH s.serviceType
+            LEFT JOIN FETCH s.staff
+            WHERE s.id IN :ids
+            """)
+    List<Slot> findAllWithAssociationsByIds(@Param("ids") List<UUID> ids);
+
+    // Single-entity variant — avoids lazy loads when mapping to a response
+    @Query("""
+            SELECT s FROM Slot s
+            JOIN FETCH s.branch
+            JOIN FETCH s.serviceType
+            LEFT JOIN FETCH s.staff
+            WHERE s.id = :id
+            """)
+    Optional<Slot> findByIdWithAssociations(@Param("id") UUID id);
 
 }
